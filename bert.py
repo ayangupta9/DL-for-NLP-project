@@ -8,6 +8,7 @@ from base_bert import BertPreTrainedModel
 from utils import get_extended_attention_mask
 
 
+
 class BertSelfAttention(nn.Module):
     def __init__(self, config):
         super().__init__()
@@ -16,7 +17,12 @@ class BertSelfAttention(nn.Module):
         self.attention_head_size = int(config.hidden_size / config.num_attention_heads)
         self.all_head_size = self.num_attention_heads * self.attention_head_size
 
+        # print("all head size\t\t", self.all_head_size)
+        # print("atten head size\t\t", self.attention_head_size)
+        # print("num atten heads\t\t", self.num_attention_heads, end='\n\n')
+
         # initialize the linear transformation layers for key, value, query
+        
         self.query = nn.Linear(config.hidden_size, self.all_head_size)
         self.key = nn.Linear(config.hidden_size, self.all_head_size)
         self.value = nn.Linear(config.hidden_size, self.all_head_size)
@@ -33,6 +39,9 @@ class BertSelfAttention(nn.Module):
         proj = proj.view(bs, seq_len, self.num_attention_heads, self.attention_head_size)
         # by proper transpose, we have proj of [bs, num_attention_heads, seq_len, attention_head_size]
         proj = proj.transpose(1, 2)
+
+        print(proj.shape)
+
         return proj
 
     def attention(self, key, query, value, attention_mask):
@@ -47,11 +56,29 @@ class BertSelfAttention(nn.Module):
         # adding tokens with a large negative number.
 
         ### TODO
-        raise NotImplementedError
+
+        attention_scores = torch.matmul(query, key.transpose(-1, -2))
+        attention_scores = attention_scores / math.sqrt(self.attention_head_size)
+
+        # attention mask
+        attention_scores = attention_scores + attention_mask
+
         # Normalize the scores.
         # Multiply the attention scores to the value and get back V'.
         # Next, we need to concat multi-heads and recover the original shape
         # [bs, seq_len, num_attention_heads * attention_head_size = hidden_size].
+        
+        attention_probs = F.softmax(attention_scores, dim=-1)
+        attention_probs = self.dropout(attention_probs)
+
+        # Compute the attention output
+        context_layer = torch.matmul(attention_probs, value)
+        context_layer = context_layer.transpose(1, 2)
+        bs, seq_len = context_layer.shape[:2]
+        context_layer = context_layer.reshape(bs, seq_len, self.all_head_size)
+
+        return context_layer
+
 
     def forward(self, hidden_states, attention_mask):
         """
@@ -97,8 +124,12 @@ class BertLayer(nn.Module):
         dropout: the dropout to be applied
         ln_layer: the layer norm to be applied
         """
-        ### TODO
-        raise NotImplementedError
+
+        final_out = dropout(dense_layer(output))
+        final_out = ln_layer(input.add(final_out))
+        return final_out
+    
+        # raise NotImplementedError
         # Hint: Remember that BERT applies dropout to the output of each sub-layer,
         # before it is added to the sub-layer input and normalized.
 
@@ -117,7 +148,15 @@ class BertLayer(nn.Module):
         4. a add-norm that takes the input and output of the feed forward layer
         """
         ### TODO
-        raise NotImplementedError
+        output = self.self_attention(hidden_states, attention_mask)
+        output = self.add_norm(hidden_states, output, self.attention_dense, self.attention_dropout, self.attention_layer_norm)
+
+        inp = output
+        output = self.interm_af(self.interm_dense(inp))
+        output = self.add_norm(inp, output, self.out_dense, self.out_dropout, self.out_layer_norm)
+
+        return output
+        # raise NotImplementedError
 
 
 class BertModel(BertPreTrainedModel):
@@ -132,11 +171,9 @@ class BertModel(BertPreTrainedModel):
     def __init__(self, config):
         super().__init__(config)
         self.config = config
-
+        # print(self.config.__dict__)
         # embedding
-        self.word_embedding = nn.Embedding(
-            config.vocab_size, config.hidden_size, padding_idx=config.pad_token_id
-        )
+        self.word_embedding = nn.Embedding(config.vocab_size, config.hidden_size, padding_idx=config.pad_token_id)
         self.pos_embedding = nn.Embedding(config.max_position_embeddings, config.hidden_size)
         self.tk_type_embedding = nn.Embedding(config.type_vocab_size, config.hidden_size)
         self.embed_layer_norm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
@@ -146,9 +183,7 @@ class BertModel(BertPreTrainedModel):
         self.register_buffer("position_ids", position_ids)
 
         # bert encoder
-        self.bert_layers = nn.ModuleList(
-            [BertLayer(config) for _ in range(config.num_hidden_layers)]
-        )
+        self.bert_layers = nn.ModuleList([BertLayer(config) for _ in range(config.num_hidden_layers)])
 
         # for [CLS] token
         self.pooler_dense = nn.Linear(config.hidden_size, config.hidden_size)
@@ -163,21 +198,25 @@ class BertModel(BertPreTrainedModel):
         # Get word embedding from self.word_embedding into input_embeds.
         inputs_embeds = None
         ### TODO
-        raise NotImplementedError
+        # raise NotImplementedError
+        inputs_embeds = self.word_embedding(input_ids)
 
         # Get position index and position embedding from self.pos_embedding into pos_embeds.
         pos_ids = self.position_ids[:, :seq_length]
 
         pos_embeds = None
         ### TODO
-        raise NotImplementedError
+        pos_embeds = self.pos_embedding(pos_ids)
+        # raise NotImplementedError
         # Get token type ids, since we are not considering token type,
         # this is just a placeholder.
         tk_type_ids = torch.zeros(input_shape, dtype=torch.long, device=input_ids.device)
         tk_type_embeds = self.tk_type_embedding(tk_type_ids)
 
         ### TODO
-        raise NotImplementedError
+        # raise NotImplementedError
+        all_embeds = inputs_embeds.add(pos_embeds.add(tk_type_embeds)) 
+        return self.embed_dropout(self.embed_layer_norm(all_embeds))
         # Add three embeddings together; then apply embed_layer_norm and dropout and
         # return the hidden states.
 

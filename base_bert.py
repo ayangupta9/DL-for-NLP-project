@@ -86,9 +86,7 @@ class BertPreTrainedModel(nn.Module):
             if os.path.isdir(pretrained_model_name_or_path):
                 # Load from a PyTorch checkpoint
                 archive_file = os.path.join(pretrained_model_name_or_path, WEIGHTS_NAME)
-            elif os.path.isfile(pretrained_model_name_or_path) or is_remote_url(
-                pretrained_model_name_or_path
-            ):
+            elif os.path.isfile(pretrained_model_name_or_path) or is_remote_url(pretrained_model_name_or_path):
                 archive_file = pretrained_model_name_or_path
             else:
                 archive_file = hf_bucket_url(
@@ -191,6 +189,7 @@ class BertPreTrainedModel(nn.Module):
         for k in state_dict:
             if k not in your_bert_params and not k.startswith("cls."):
                 possible_rename = [x for x in k.split(".")[1:-1] if x in m.values()]
+                print(possible_rename)
                 raise ValueError(
                     f"{k} cannot be reload to your model, one/some of {possible_rename} we provided have been renamed"
                 )

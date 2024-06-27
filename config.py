@@ -129,9 +129,7 @@ class PretrainedConfig(object):
             return config
 
     @classmethod
-    def get_config_dict(
-        cls, pretrained_model_name_or_path: str | os.PathLike, **kwargs
-    ) -> tuple[dict[str, object], dict[str, object]]:
+    def get_config_dict(cls, pretrained_model_name_or_path: str | os.PathLike, **kwargs) -> tuple[dict[str, object], dict[str, object]]:
         cache_dir = kwargs.pop("cache_dir", None)
         force_download = kwargs.pop("force_download", False)
         resume_download = kwargs.pop("resume_download", False)
